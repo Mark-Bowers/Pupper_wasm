@@ -311,40 +311,92 @@ function subarray(array, index, size, num = 1) {
   return array.subarray(start, end);
 }
 
-function createBufferGeometry(model, meshID) {
+// Swizzles (permute) each point in an array of xyz coordinates (z->y, -y->z)
+function swizzlePointArray(points) { // model.mesh_vert, model.mesh_vertadr[meshId], 3, model.mesh_vertnum[meshId]
+  for (let v = 0; v < points.length; v+=3) {
+    //points[v + 0] =  points[v + 0];   // x (no change)
+    const y       =  points[v + 1];     // save y value
+    points[v + 1] =  points[v + 2];     // move z value to y
+    points[v + 2] = -y;                 // use saved y value to move -y to z
+  }
+}
+
+// Create a new THREE.BufferGeometry from the corresponding MuJoCo mesh
+function createBufferGeometry(model, meshId, body) {
   let geometry = new THREE.BufferGeometry();
 
-  let vertex_buffer = model.mesh_vert.subarray(
-     model.mesh_vertadr[meshID] * 3,
-    (model.mesh_vertadr[meshID]  + model.mesh_vertnum[meshID]) * 3);
-  for (let v = 0; v < vertex_buffer.length; v+=3){
-    //vertex_buffer[v + 0] =  vertex_buffer[v + 0];
-    let temp             =  vertex_buffer[v + 1];
-    vertex_buffer[v + 1] =  vertex_buffer[v + 2];
-    vertex_buffer[v + 2] = -temp;
-  }
+  const vert_index = model.mesh_vertadr[meshId];
+  const num_vertices = model.mesh_vertnum[meshId];
 
-  let normal_buffer = model.mesh_normal.subarray(
-     model.mesh_vertadr[meshID] * 3,
-    (model.mesh_vertadr[meshID]  + model.mesh_vertnum[meshID]) * 3);
-  for (let v = 0; v < normal_buffer.length; v+=3){
-    //normal_buffer[v + 0] =  normal_buffer[v + 0];
-    let temp             =  normal_buffer[v + 1];
-    normal_buffer[v + 1] =  normal_buffer[v + 2];
-    normal_buffer[v + 2] = -temp;
-  }
+  // TODO: Since these arrays are swizzled in place, make sure it only happens once.
+  let vertex_buffer = subarray(model.mesh_vert, vert_index, 3, num_vertices);
+  swizzlePointArray(vertex_buffer);
 
-  let uv_buffer = model.mesh_texcoord.subarray(
-     model.mesh_texcoordadr[meshID] * 2,
-    (model.mesh_texcoordadr[meshID]  + model.mesh_vertnum[meshID]) * 2);
-  let triangle_buffer = model.mesh_face.subarray(
-     model.mesh_faceadr[meshID] * 3,
-    (model.mesh_faceadr[meshID]  + model.mesh_facenum[meshID]) * 3);
+  let normal_buffer = subarray(model.mesh_normal, vert_index, 3, num_vertices);
+  swizzlePointArray(normal_buffer);
+
+  const uv_buffer = subarray(model.mesh_texcoord, model.mesh_texcoordadr[meshId], 2, num_vertices);
+  const triangle_buffer = subarray(model.mesh_face, model.mesh_faceadr[meshId], 3, model.mesh_facenum[meshId]);
+
   geometry.setAttribute("position", new THREE.BufferAttribute(vertex_buffer, 3));
   geometry.setAttribute("normal"  , new THREE.BufferAttribute(normal_buffer, 3));
   geometry.setAttribute("uv"      , new THREE.BufferAttribute(    uv_buffer, 2));
   geometry.setIndex    (Array.from(triangle_buffer));
+
+  body.has_custom_mesh = true;
+
   return geometry
+}
+
+const getBufferGeometry = (function() {
+  /** @type {Object.<number, THREE.BufferGeometry>} */
+  let meshes = {};
+
+  return function(model, meshId, body) {
+    let geometry = undefined;
+
+    if (meshId in meshes) {
+      geometry = meshes[meshId];
+    } else {
+      geometry = meshes[meshId] = createBufferGeometry(model, meshId, body);
+    }
+
+    return geometry;
+  };
+})();
+
+function getGeometry(mujoco, model, geomId, body) {
+  const type = model.geom_type[geomId];
+  const size = subarray(model.geom_size, geomId, 3)
+
+  let geometry = undefined;
+
+  if (type == mujoco.mjtGeom.mjGEOM_PLANE.value) {
+    // TODO: 0 values should be set to the far clipping plane rather than 100
+    const x = size[0] == 0 ? 100 : size[0] * 2;
+    const y = size[1] == 0 ? 100 : size[1] * 2;
+    geometry = new THREE.PlaneGeometry(x, y);
+  } else if (type == mujoco.mjtGeom.mjGEOM_HFIELD.value) {
+    // TODO: Implement height field.
+  } else if (type == mujoco.mjtGeom.mjGEOM_SPHERE.value) {
+    geometry = new THREE.SphereGeometry(size[0]);
+  } else if (type == mujoco.mjtGeom.mjGEOM_CAPSULE.value) {
+    geometry = new THREE.CapsuleGeometry(size[0], size[1] * 2.0, 20, 20);
+  } else if (type == mujoco.mjtGeom.mjGEOM_ELLIPSOID.value) {
+    geometry = new THREE.SphereGeometry(1); // Stretch this below
+    geometry.scale(size[0], size[2], size[1]);
+  } else if (type == mujoco.mjtGeom.mjGEOM_CYLINDER.value) {
+    geometry = new THREE.CylinderGeometry(size[0], size[0], size[1] * 2.0);
+  } else if (type == mujoco.mjtGeom.mjGEOM_BOX.value) {
+    geometry = new THREE.BoxGeometry(size[0] * 2.0, size[2] * 2.0, size[1] * 2.0);
+  } else if (type == mujoco.mjtGeom.mjGEOM_MESH.value) {
+    const meshId = model.geom_dataid[geomId];
+    geometry = getBufferGeometry(model, meshId, body);
+  } else {    // Set the default geometry. In MuJoCo, this is a sphere.
+    geometry = new THREE.SphereGeometry(size[0] * 0.5);
+  }
+
+  return geometry;
 }
 
 /** Loads a scene for MuJoCo
@@ -408,38 +460,11 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       // Get the parent body of the geom
       const body = getBody(model, g, bodies);
 
-      let type = model.geom_type[g];
+      // Get the the three.js geometry for the MuJoCo geom
+      const geometry = getGeometry(mujoco, model, g, body);
+
+      const type = model.geom_type[g];
       const size = subarray(model.geom_size, g, 3);
-
-      // Set the default geometry. In MuJoCo, this is a sphere.
-      let geometry = new THREE.SphereGeometry(size[0] * 0.5);
-      if (type == mujoco.mjtGeom.mjGEOM_PLANE.value) {
-        // Special handling for plane later.
-      } else if (type == mujoco.mjtGeom.mjGEOM_HFIELD.value) {
-        // TODO: Implement this.
-      } else if (type == mujoco.mjtGeom.mjGEOM_SPHERE.value) {
-        geometry = new THREE.SphereGeometry(size[0]);
-      } else if (type == mujoco.mjtGeom.mjGEOM_CAPSULE.value) {
-        geometry = new THREE.CapsuleGeometry(size[0], size[1] * 2.0, 20, 20);
-      } else if (type == mujoco.mjtGeom.mjGEOM_ELLIPSOID.value) {
-        geometry = new THREE.SphereGeometry(1); // Stretch this below
-      } else if (type == mujoco.mjtGeom.mjGEOM_CYLINDER.value) {
-        geometry = new THREE.CylinderGeometry(size[0], size[0], size[1] * 2.0);
-      } else if (type == mujoco.mjtGeom.mjGEOM_BOX.value) {
-        geometry = new THREE.BoxGeometry(size[0] * 2.0, size[2] * 2.0, size[1] * 2.0);
-      } else if (type == mujoco.mjtGeom.mjGEOM_MESH.value) {
-        let meshID = model.geom_dataid[g];
-
-        if (!(meshID in meshes)) {
-          geometry = createBufferGeometry(model, meshID);
-          meshes[meshID] = geometry;
-        } else {
-          geometry = meshes[meshID];
-        }
-
-        body.has_custom_mesh = true;
-      }
-      // Done with geometry creation.
 
       // Set the Material Properties of incoming bodies
       let texture = undefined;
