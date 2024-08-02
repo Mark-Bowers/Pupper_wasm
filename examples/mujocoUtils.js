@@ -418,16 +418,14 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
             rgbaArray[(p * 4) + 3] = 1.0;
           }
           texture = new THREE.DataTexture(rgbaArray, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
-          if (texId == 2) {
-            texture.repeat = new THREE.Vector2(50, 50);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-          } else {
-            texture.repeat = new THREE.Vector2(1, 1);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
+          if (type == mujoco.mjtGeom.mjGEOM_PLANE.value) {
+            const mat_texrepeat = subarray(model.mat_texrepeat, matId, 2)
+            const set_repeat = mat_texrepeat[0] != texture.repeat.x || mat_texrepeat[1] != texture.repeat.x;
+            if (set_repeat) {             // Set texture.repeat to match mat_texrepeat
+              texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+              texture.repeat.set(...mat_texrepeat);   // TODO: Test cube wrapping
+            }
           }
-
           texture.needsUpdate = true;
         }
       }
@@ -553,6 +551,7 @@ export async function downloadExampleScenesFolder(mujoco) {
     "assets/Body_V4_Servos.obj",
     "assets/Body_V4_Strap.obj",
     // "assets/BrushedAluminum.png",
+    "assets/Carpet.png",
     // "assets/CarbonFiber.png",
     // "assets/CarbonFiber2D.png",
     // "assets/CLS6336HV.png",
