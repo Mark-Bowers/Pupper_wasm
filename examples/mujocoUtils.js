@@ -280,6 +280,30 @@ function materialName(model, matId) {
   return decodeName(model, model.name_matadr[matId]);
 }
 
+function createBody(name, bodyId, bodies) {
+  let body = new THREE.Group();
+  body.name = name;
+  body.bodyId = bodyId;
+  body.has_custom_mesh = false;
+
+  bodies[bodyId] = body;  // Add this new body to set of bodies
+
+  return body;
+}
+
+function getBody(model, geomId, bodies) {
+  const b = model.geom_bodyid[geomId];
+  let body =  bodies[b];
+
+  // Create the body if it doesn't exist
+  if (body == undefined) {
+    const name = bodyName(model, b);
+    body = createBody(name, b, bodies);
+  }
+
+  return body;
+}
+
 // subarray helper function (computes start and end and returns subarray)
 function subarray(array, index, size, num = 1) {
   const start = index * size;
@@ -364,27 +388,28 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
     /** @type {THREE.Light[]} */
     let lights = [];
 
+    // Create an array of THREE.DataTexture to hold objects from the textures specified in the MuJoCo model
+    let textures = new Array(model.ntex);
+
+    // Create an array of THREE material to hold objects from the materials specified in the MuJoCo model
+    let materials = new Array(model.nmat);
+
     // Default material definition.
     let material = new THREE.MeshPhysicalMaterial();
     material.color = new THREE.Color(1, 1, 1);
 
-    // Loop through the MuJoCo geoms and recreate them in three.js.
+    // Loop through the MuJoCo geoms and recreate them in three.js
     for (let g = 0; g < model.ngeom; g++) {
-      // Only visualize geom groups up to 2 (same default behavior as simulate).
-      if (!(model.geom_group[g] < 3)) { continue; }
+      const geom_group = model.geom_group[g];
 
-      // Get the body ID and type of the geom.
-      let b = model.geom_bodyid[g];
+      // Only visualize geom groups up to 2 (same default behavior as simulate)
+      if (geom_group > 2) { continue; }
+
+      // Get the parent body of the geom
+      const body = getBody(model, g, bodies);
+
       let type = model.geom_type[g];
       const size = subarray(model.geom_size, g, 3);
-
-      // Create the body if it doesn't exist.
-      if (!(b in bodies)) {
-        bodies[b] = new THREE.Group();
-        bodies[b].name = names[model.name_bodyadr[b]];
-        bodies[b].bodyID = b;
-        bodies[b].has_custom_mesh = false;
-      }
 
       // Set the default geometry. In MuJoCo, this is a sphere.
       let geometry = new THREE.SphereGeometry(size[0] * 0.5);
@@ -412,7 +437,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
           geometry = meshes[meshID];
         }
 
-        bodies[b].has_custom_mesh = true;
+        body.has_custom_mesh = true;
       }
       // Done with geometry creation.
 
@@ -421,7 +446,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       let color = subarray(model.geom_rgba, g, 4);
 
       const matId = model.geom_matid[g];
-      if (model.geom_matid[g] != -1) {
+      if (matId != -1) {
         color = subarray(model.mat_rgba, matId, 4);
 
         // Construct Texture from model.tex_rgb
@@ -439,7 +464,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
             rgbaArray[(p * 4) + 2] = rgbArray[offset + ((p * 3) + 2)];
             rgbaArray[(p * 4) + 3] = 1.0;
           }
-          texture = new THREE.DataTexture(rgbaArray, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
+          texture = new THREE.DataTexture(rgbaArray, width, height);
           if (type == mujoco.mjtGeom.mjGEOM_PLANE.value) {
             const mat_texrepeat = subarray(model.mat_texrepeat, matId, 2)
             const set_repeat = mat_texrepeat[0] != texture.repeat.x || mat_texrepeat[1] != texture.repeat.x;
@@ -453,6 +478,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
         }
       }
 
+      // Create new THREE.MeshPhysicalMaterial
       if (material.color.r != color[0] ||
           material.color.g != color[1] ||
           material.color.b != color[2] ||
@@ -464,10 +490,10 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
           color: new THREE.Color(color[0], color[1], color[2]),
           transparent: color[3] < 1.0,
           opacity: color[3],
-          specularIntensity: model.geom_matid[g] != -1 ?       model.mat_specular   [model.geom_matid[g]] *0.5 : undefined,
-          reflectivity     : model.geom_matid[g] != -1 ?       model.mat_reflectance[model.geom_matid[g]] : undefined,
-          roughness        : model.geom_matid[g] != -1 ? 1.0 - model.mat_shininess  [model.geom_matid[g]] : undefined,
-          metalness        : model.geom_matid[g] != -1 ? 0.1 : undefined,
+          specularIntensity: matId == -1 ? undefined :       model.mat_specular[matId] * 0.5,
+          reflectivity     : matId == -1 ? undefined :       model.mat_reflectance[matId],
+          roughness        : matId == -1 ? undefined : 1.0 - model.mat_shininess[matId],
+          metalness        : matId == -1 ? undefined : 0.1,
           map              : texture
         });
       }
@@ -490,8 +516,8 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
 
       mesh.castShadow = g == 0 ? false : true;
       mesh.receiveShadow = type != 7;
-      mesh.bodyID = b;
-      bodies[b].add(mesh);
+      mesh.bodyId = body.bodyId;  // TODO: Necessary? Useful?
+      body.add(mesh);
       getPosition  (model.geom_pos, g, mesh.position  );
       if (type != 0) { getQuaternion(model.geom_quat, g, mesh.quaternion); }
       if (type == 4) { mesh.scale.set(size[0], size[2], size[1]) } // Stretch the Ellipsoid
