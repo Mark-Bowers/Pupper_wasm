@@ -304,6 +304,19 @@ function getBody(model, geomId, bodies) {
   return body;
 }
 
+// Function to convert a floating point number in the range [0 1] to a two-digit hexadecimal string
+const norm2hex = (c) => {
+  const hex = Math.round(c * 255).toString(16);
+  return hex.length === 1 ? '0' + hex : hex;
+};
+
+// Convert an rgba array to a hex string representation of the color
+function rgba2name(rgba) {
+  let name = "#";
+  for (const c of rgba) { name += norm2hex(c); };
+  return name;
+}
+
 // subarray helper function (computes start and end and returns subarray)
 function subarray(array, index, size, num = 1) {
   const start = index * size;
@@ -504,6 +517,34 @@ function getGeometry(mujoco, model, geomId, body) {
   return geometry;
 }
 
+function createMesh(mujoco, model, g, geometry, material, body) {
+  let mesh = undefined;
+
+  const geom_type = model.geom_type[g];
+  if (geom_type == mujoco.mjtGeom.mjGEOM_PLANE.value) {
+    mesh = new Reflector( geometry, {
+      color: material.color,
+      clipBias: 0.003,
+      texture: material.map,
+      reflectivity: material.reflectivity
+    });
+    mesh.rotateX( - Math.PI / 2 );
+
+    mesh.castShadow = false;                  // The (floor) plane recieves shadows, but does not cast them
+    mesh.receiveShadow = true;
+  } else {
+    mesh = new THREE.Mesh(geometry, material);
+
+    mesh.castShadow = true;                   // Meshes, other than plane, cast shadows
+    mesh.receiveShadow = geom_type != 7;      // Set mesh to not recieve shadow
+
+    getQuaternion(model.geom_quat, g, mesh.quaternion);
+  }
+  getPosition( model.geom_pos, g, mesh.position );
+
+  return mesh;
+}
+
 /** Loads a scene for MuJoCo
  * @param {mujoco} mujoco This is a reference to the mujoco namespace object
  * @param {string} filename This is the name of the .xml file in the /working/ directory of the MuJoCo/Emscripten Virtual File System
@@ -520,28 +561,22 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
 
     // Load in the state from XML.
     filename = "pupper.xml"
-    parent.model       = mujoco.Model.load_from_xml("/working/"+filename);
-    parent.state       = new mujoco.State(parent.model);
-    parent.simulation  = new mujoco.Simulation(parent.model, parent.state);
-
-    let model = parent.model;
-    let state = parent.state;
-    let simulation = parent.simulation;
+    const model     = parent.model       = mujoco.Model.load_from_xml("/working/"+filename);
+    let state       = parent.state       = new mujoco.State(model);
+    let simulation  = parent.simulation  = new mujoco.Simulation(model, parent.state);
 
     // Decode the null-terminated string names.
-    let textDecoder = new TextDecoder("utf-8");
+    //const textDecoder = new TextDecoder("utf-8");
     let fullString = textDecoder.decode(model.names);
-    let names = fullString.split(textDecoder.decode(new ArrayBuffer(1)));
+    const names = fullString.split(textDecoder.decode(new ArrayBuffer(1)));
 
     // Create the root object.
-    let mujocoRoot = new THREE.Group();
+    const mujocoRoot = new THREE.Group();
     mujocoRoot.name = "MuJoCo Root"
     parent.scene.add(mujocoRoot);
 
     /** @type {Object.<number, THREE.Group>} */
     let bodies = {};
-    /** @type {Object.<number, THREE.BufferGeometry>} */
-    let meshes = {};
     /** @type {THREE.Light[]} */
     let lights = [];
 
@@ -567,33 +602,10 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       // Get material for geom
       const material = getMaterial(model, g, materials, textures);
 
-      const type = model.geom_type[g];
-      const size = subarray(model.geom_size, g, 3);
+      const mesh = createMesh(mujoco, model, g, geometry, material, body);
 
-
-      let mesh = new THREE.Mesh();
-      if (type == 0) {
-        // 0 values should be set to the far clipping plane rather than 100
-        let x = size[0] == 0 ? 100 : size[0] * 2;
-        let y = size[1] == 0 ? 100 : size[1] * 2;
-        mesh = new Reflector( new THREE.PlaneGeometry( x, y ), {
-          color: material.color,
-          clipBias: 0.003,
-          texture: material.map,
-          reflectivity: material.reflectivity
-        } );
-        mesh.rotateX( - Math.PI / 2 );
-      } else {
-        mesh = new THREE.Mesh(geometry, material);
-      }
-
-      mesh.castShadow = g == 0 ? false : true;
-      mesh.receiveShadow = type != 7;
       mesh.bodyId = body.bodyId;  // TODO: Necessary? Useful?
-      body.add(mesh);
-      getPosition  (model.geom_pos, g, mesh.position  );
-      if (type != 0) { getQuaternion(model.geom_quat, g, mesh.quaternion); }
-      if (type == 4) { mesh.scale.set(size[0], size[2], size[1]) } // Stretch the Ellipsoid
+      body.add(mesh);             // Add mesh to body
     }
 
     // Parse tendons.
@@ -641,16 +653,19 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       mujocoRoot.add(light);
     }
 
+    // TODO: Figure out this Pupper model warning
     for (let b = 0; b < model.nbody; b++) {
       //let parent_body = model.body_parentid()[b];
+      const body = bodies[b];
       if (b == 0 || !bodies[0]) {
-        mujocoRoot.add(bodies[b]);
-      } else if(bodies[b]){
-        bodies[0].add(bodies[b]);
+        mujocoRoot.add(body);
+      } else if(body){
+        bodies[0].add(body);
       } else {
-        console.log("Body without Geometry detected; adding to bodies", b, bodies[b]);
-        bodies[b] = new THREE.Group(); bodies[b].name = names[b + 1]; bodies[b].bodyID = b; bodies[b].has_custom_mesh = false;
-        bodies[0].add(bodies[b]);
+        console.log("Body without Geometry detected; adding to bodies", b, body);
+        const name = bodyName(model, b + 1);
+        body = createBody(name, b, bodies);
+        bodies[0].add(body);
       }
     }
   
