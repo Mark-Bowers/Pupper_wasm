@@ -311,6 +311,111 @@ function subarray(array, index, size, num = 1) {
   return array.subarray(start, end);
 }
 
+function createTexture(model, texId, textures) {
+  const type    = model.tex_type[texId];    // 2d:0, cube:1, skybox:2
+  const width   = model.tex_width[texId];
+  const height  = model.tex_height[texId];
+  const offset  = model.tex_adr[texId];
+  const rgb     = model.tex_rgb;
+
+  // Create a THREE.RGBAFormat texture format array from MuJoCo RGB texture
+  const len = width * height * 4;
+  let rgba = new Uint8Array(len);
+  for (let p1 = 0, p2 = offset; p1 < len;){
+    rgba[p1++] = rgb[p2++];
+    rgba[p1++] = rgb[p2++];
+    rgba[p1++] = rgb[p2++];
+    rgba[p1++] = 1.0;
+  }
+  let texture = new THREE.DataTexture(rgba, width, height)
+  texture.name = textureName(model, texId);
+  texture.mtype = type;         // MuJoCo type // TODO: Is this necessary/useful?
+  texture.needsUpdate = true;
+
+  textures[texId] =  texture;   // Add this texture to set of textures
+
+  return texture;
+}
+
+// Create a material properties object with core properties
+function createMatProperties(name, red, green, blue, alpha) {
+  return {
+    name        : name,
+    color       : new THREE.Color(red, green, blue),
+    transparent : alpha < 1.0,
+    opacity     : alpha
+  };
+}
+
+function createMaterial(model, matId, textures) {
+  // TODO: Get the appearance as close as possible to MuJoCo viewer
+
+  // MeshStandardMaterial
+  const name = materialName(model, matId);
+  const rgba = subarray(model.mat_rgba, matId, 4);
+  let matProperties = createMatProperties(name, ...rgba);
+
+  const roughness =   1.0 - model.mat_shininess[matId];
+  const metalness         = model.mat_specular[matId];    // 0.1 if specularIntensity
+
+  matProperties.roughness = roughness;
+  matProperties.metalness = metalness;
+
+  // MeshPhysicalMaterial
+  const reflectivity      = model.mat_reflectance[matId];
+  // const specularIntensity = model.mat_specular[matId] * 0.5;
+
+  matProperties.reflectivity  = reflectivity;
+  // matProperties.specularIntensity = specularIntensity
+  // matProperties.clearcoat= reflectivity;
+  // matProperties.clearcoatRoughness= roughness;
+
+  const texId = model.mat_texid[matId];
+  if (texId != -1) {              // material specifies a texture
+    let texture = textures[texId];
+    if (texture == undefined) {
+      texture = createTexture(model, texId, textures);
+    }
+    const mat_texrepeat = subarray(model.mat_texrepeat, matId, 2)
+    const set_repeat = mat_texrepeat[0] != texture.repeat.x || mat_texrepeat[1] != texture.repeat.x;
+    if (set_repeat) {             // Set texture.repeat to match mat_texrepeat
+      if (texture.repeat.x != 1 || texture.repeat.y != 1) {
+        // TODO: Need to copy texture object and set texrepeat
+      }
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(...mat_texrepeat);   // TODO: Test cube wrapping
+      texture.needsUpdate = true;
+    }
+    matProperties.map = texture;  // Assign the texture to the material
+  }
+
+  return new THREE.MeshPhysicalMaterial(matProperties);
+}
+
+function getMaterial(model, g, materials, textures) {
+  const matId = model.geom_matid[g];                  // geom material id
+
+  let material = undefined;
+
+  if (matId != -1) {                    // geom specifies a material
+    material = materials[matId];
+    if (material == undefined) {        // material has not been created yet
+      material = materials[matId] = createMaterial(model, matId, textures);
+    }
+  } else {                              // geom does not specify a material; use geom color
+    const geom_rgba = subarray(model.geom_rgba, g, 4);  // geom rgba color
+    const name = rgba2name(geom_rgba);  // Name the material based on its color
+    material = materials[name];         // Check if material already exists
+
+    if (!material) {                    // Need to create a new material
+      material = new THREE.MeshPhysicalMaterial(createMatProperties(name, ...geom_rgba));
+      materials[name] = material;       // Save the new material indexed by name
+    }
+  }
+
+  return material;
+}
+
 // Swizzles (permute) each point in an array of xyz coordinates (z->y, -y->z)
 function swizzlePointArray(points) { // model.mesh_vert, model.mesh_vertadr[meshId], 3, model.mesh_vertnum[meshId]
   for (let v = 0; v < points.length; v+=3) {
@@ -446,10 +551,6 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
     // Create an array of THREE material to hold objects from the materials specified in the MuJoCo model
     let materials = new Array(model.nmat);
 
-    // Default material definition.
-    let material = new THREE.MeshPhysicalMaterial();
-    material.color = new THREE.Color(1, 1, 1);
-
     // Loop through the MuJoCo geoms and recreate them in three.js
     for (let g = 0; g < model.ngeom; g++) {
       const geom_group = model.geom_group[g];
@@ -463,65 +564,12 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       // Get the the three.js geometry for the MuJoCo geom
       const geometry = getGeometry(mujoco, model, g, body);
 
+      // Get material for geom
+      const material = getMaterial(model, g, materials, textures);
+
       const type = model.geom_type[g];
       const size = subarray(model.geom_size, g, 3);
 
-      // Set the Material Properties of incoming bodies
-      let texture = undefined;
-      let color = subarray(model.geom_rgba, g, 4);
-
-      const matId = model.geom_matid[g];
-      if (matId != -1) {
-        color = subarray(model.mat_rgba, matId, 4);
-
-        // Construct Texture from model.tex_rgb
-        texture = undefined;
-        let texId = model.mat_texid[matId];
-        if (texId != -1) {
-          let width    = model.tex_width [texId];
-          let height   = model.tex_height[texId];
-          let offset   = model.tex_adr   [texId];
-          let rgbArray = model.tex_rgb   ;
-          let rgbaArray = new Uint8Array(width * height * 4);
-          for (let p = 0; p < width * height; p++){
-            rgbaArray[(p * 4) + 0] = rgbArray[offset + ((p * 3) + 0)];
-            rgbaArray[(p * 4) + 1] = rgbArray[offset + ((p * 3) + 1)];
-            rgbaArray[(p * 4) + 2] = rgbArray[offset + ((p * 3) + 2)];
-            rgbaArray[(p * 4) + 3] = 1.0;
-          }
-          texture = new THREE.DataTexture(rgbaArray, width, height);
-          if (type == mujoco.mjtGeom.mjGEOM_PLANE.value) {
-            const mat_texrepeat = subarray(model.mat_texrepeat, matId, 2)
-            const set_repeat = mat_texrepeat[0] != texture.repeat.x || mat_texrepeat[1] != texture.repeat.x;
-            if (set_repeat) {             // Set texture.repeat to match mat_texrepeat
-              texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-              texture.repeat.set(...mat_texrepeat);   // TODO: Test cube wrapping
-            }
-          }
-          texture.name = textureName(model, texId);
-          texture.needsUpdate = true;
-        }
-      }
-
-      // Create new THREE.MeshPhysicalMaterial
-      if (material.color.r != color[0] ||
-          material.color.g != color[1] ||
-          material.color.b != color[2] ||
-          material.opacity != color[3] ||
-          material.map     != texture) {
-        const name = materialName(model, matId);
-        material = new THREE.MeshPhysicalMaterial({
-          name: name,
-          color: new THREE.Color(color[0], color[1], color[2]),
-          transparent: color[3] < 1.0,
-          opacity: color[3],
-          specularIntensity: matId == -1 ? undefined :       model.mat_specular[matId] * 0.5,
-          reflectivity     : matId == -1 ? undefined :       model.mat_reflectance[matId],
-          roughness        : matId == -1 ? undefined : 1.0 - model.mat_shininess[matId],
-          metalness        : matId == -1 ? undefined : 0.1,
-          map              : texture
-        });
-      }
 
       let mesh = new THREE.Mesh();
       if (type == 0) {
