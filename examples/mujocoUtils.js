@@ -265,6 +265,42 @@ function subarray(array, index, size, num = 1) {
   return array.subarray(start, end);
 }
 
+function createBufferGeometry(model, meshID) {
+  let geometry = new THREE.BufferGeometry();
+
+  let vertex_buffer = model.mesh_vert.subarray(
+     model.mesh_vertadr[meshID] * 3,
+    (model.mesh_vertadr[meshID]  + model.mesh_vertnum[meshID]) * 3);
+  for (let v = 0; v < vertex_buffer.length; v+=3){
+    //vertex_buffer[v + 0] =  vertex_buffer[v + 0];
+    let temp             =  vertex_buffer[v + 1];
+    vertex_buffer[v + 1] =  vertex_buffer[v + 2];
+    vertex_buffer[v + 2] = -temp;
+  }
+
+  let normal_buffer = model.mesh_normal.subarray(
+     model.mesh_vertadr[meshID] * 3,
+    (model.mesh_vertadr[meshID]  + model.mesh_vertnum[meshID]) * 3);
+  for (let v = 0; v < normal_buffer.length; v+=3){
+    //normal_buffer[v + 0] =  normal_buffer[v + 0];
+    let temp             =  normal_buffer[v + 1];
+    normal_buffer[v + 1] =  normal_buffer[v + 2];
+    normal_buffer[v + 2] = -temp;
+  }
+
+  let uv_buffer = model.mesh_texcoord.subarray(
+     model.mesh_texcoordadr[meshID] * 2,
+    (model.mesh_texcoordadr[meshID]  + model.mesh_vertnum[meshID]) * 2);
+  let triangle_buffer = model.mesh_face.subarray(
+     model.mesh_faceadr[meshID] * 3,
+    (model.mesh_faceadr[meshID]  + model.mesh_facenum[meshID]) * 3);
+  geometry.setAttribute("position", new THREE.BufferAttribute(vertex_buffer, 3));
+  geometry.setAttribute("normal"  , new THREE.BufferAttribute(normal_buffer, 3));
+  geometry.setAttribute("uv"      , new THREE.BufferAttribute(    uv_buffer, 2));
+  geometry.setIndex    (Array.from(triangle_buffer));
+  return geometry
+}
+
 /** Loads a scene for MuJoCo
  * @param {mujoco} mujoco This is a reference to the mujoco namespace object
  * @param {string} filename This is the name of the .xml file in the /working/ directory of the MuJoCo/Emscripten Virtual File System
@@ -348,38 +384,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
         let meshID = model.geom_dataid[g];
 
         if (!(meshID in meshes)) {
-          geometry = new THREE.BufferGeometry(); // TODO: Populate the Buffer Geometry with Generic Mesh Data
-
-          let vertex_buffer = model.mesh_vert.subarray(
-             model.mesh_vertadr[meshID] * 3,
-            (model.mesh_vertadr[meshID]  + model.mesh_vertnum[meshID]) * 3);
-          for (let v = 0; v < vertex_buffer.length; v+=3){
-            //vertex_buffer[v + 0] =  vertex_buffer[v + 0];
-            let temp             =  vertex_buffer[v + 1];
-            vertex_buffer[v + 1] =  vertex_buffer[v + 2];
-            vertex_buffer[v + 2] = -temp;
-          }
-
-          let normal_buffer = model.mesh_normal.subarray(
-             model.mesh_vertadr[meshID] * 3,
-            (model.mesh_vertadr[meshID]  + model.mesh_vertnum[meshID]) * 3);
-          for (let v = 0; v < normal_buffer.length; v+=3){
-            //normal_buffer[v + 0] =  normal_buffer[v + 0];
-            let temp             =  normal_buffer[v + 1];
-            normal_buffer[v + 1] =  normal_buffer[v + 2];
-            normal_buffer[v + 2] = -temp;
-          }
-
-          let uv_buffer = model.mesh_texcoord.subarray(
-             model.mesh_texcoordadr[meshID] * 2,
-            (model.mesh_texcoordadr[meshID]  + model.mesh_vertnum[meshID]) * 2);
-          let triangle_buffer = model.mesh_face.subarray(
-             model.mesh_faceadr[meshID] * 3,
-            (model.mesh_faceadr[meshID]  + model.mesh_facenum[meshID]) * 3);
-          geometry.setAttribute("position", new THREE.BufferAttribute(vertex_buffer, 3));
-          geometry.setAttribute("normal"  , new THREE.BufferAttribute(normal_buffer, 3));
-          geometry.setAttribute("uv"      , new THREE.BufferAttribute(    uv_buffer, 2));
-          geometry.setIndex    (Array.from(triangle_buffer));
+          geometry = createBufferGeometry(model, meshID);
           meshes[meshID] = geometry;
         } else {
           geometry = meshes[meshID];
