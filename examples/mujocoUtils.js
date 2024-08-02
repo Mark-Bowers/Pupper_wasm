@@ -656,7 +656,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
     // TODO: Figure out this Pupper model warning
     for (let b = 0; b < model.nbody; b++) {
       //let parent_body = model.body_parentid()[b];
-      const body = bodies[b];
+      let body = bodies[b];
       if (b == 0 || !bodies[0]) {
         mujocoRoot.add(body);
       } else if(body){
