@@ -265,6 +265,13 @@ function subarray(array, index, size, num = 1) {
   return array.subarray(start, end);
 }
 
+// subarray helper function (computes start and end and returns subarray)
+function subarray(array, index, size, num = 1) {
+  const start = index * size;
+  const end = start + size * num;
+  return array.subarray(start, end);
+}
+
 function createBufferGeometry(model, meshID) {
   let geometry = new THREE.BufferGeometry();
 
