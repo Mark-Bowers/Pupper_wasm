@@ -7,15 +7,16 @@
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance="0"/>
 
     <texture type="2d" name="dog_bowl" file="dog_bowl.png"/>
-    <material name="material_0" texture="dog_bowl" specular="0.5" shininess="0.5"/>
-    <mesh name="dog_bowl" file="dog_bowl.obj"/>
+    <texture type="2d"  file="Carpet.png"/>
     <!-- <texture type="2d"  file="Concrete.png"/> -->
     <texture type="2d"  file="Eyes.png"/>
     <texture type="2d"  file="Marble.png"/>
     <texture type="2d"  file="Oak.png"/>
     <texture type="2d"  file="Slate.png"/>
 
+    <material name="Carpet" texture="Carpet"  specular="0.0" shininess="0.0" reflectance="0.1" texrepeat="1 1"/>
     <!-- <material name="Concrete" texture="Concrete"  specular="0.0" shininess="0.0" reflectance="0.1" texrepeat="1 1"/> -->
+    <material name="dog_bowl" texture="dog_bowl"  specular="0.5" shininess="0.5"/>
     <material name="Eyes"     texture="Eyes"      specular="0.0" shininess="0.0" reflectance="0.1"/>
     <material name="Marble"   texture="Marble"    specular="0.0" shininess="0.0" reflectance="0.1" texrepeat="2 1"/>
     <material name="Oak"      texture="Oak"       specular="0.0" shininess="0.0" reflectance="0.2" texrepeat="4 4"/>
@@ -34,6 +35,8 @@
     <material name="Plastic_Glossy_(Blue)"  specular="0.5" shininess="0.5" rgba="0.188235 0.231373 0.588235 1.0"/>
     <material name="Silicone_(QuickSilver)" specular="0.5" shininess="0.5" rgba="0.654902 0.654902 0.654902 1.0"/>
   
+    <mesh name="dog_bowl" file="dog_bowl.obj"/>
+
     <mesh name="BodyV4v70.001" file="BodyV4v70.001.stl"/>
 
     <mesh file="Body_V4_Strap.obj"    scale=".01 .01 .01"/>
@@ -117,8 +120,9 @@
 
   <worldbody>
     <!-- Environment -->
+    <geom class="floor" size=".5 .3 .04" material="Carpet" rgba="1 1 1 .4"/>
     <!-- <geom class="floor" size="0 0 .004" material="Marble"/> -->
-    <geom class="floor" size="2 2 .004" material="Oak"/>
+    <!-- <geom class="floor" size="2 2 .004" material="Oak"  rgba=".843 .796 .686 .01"/> -->
 
     <!-- <geom class="floor" size="0 0 .004" material="Slate"/> -->
     <light name="spotlight" mode="targetbodycom" target="base_link" pos="0 -1 1" diffuse="0.9 0.9 0.9" specular="0.3 0.3 0.3" cutoff="100" castshadow="false"/>
@@ -126,9 +130,9 @@
     <camera name="tracking_cam" mode="targetbody" target="base_link" pos="0.5 -0.5 0.5"/>
     <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
 
-    <body pos=".3 .3 0">
+    <body pos=".3 .15 0">
       <freejoint/>
-      <geom material="material_0" mesh="dog_bowl" type="mesh" group="2"/>
+      <geom material="dog_bowl" mesh="dog_bowl" type="mesh" group="2"/>
     </body>
 
     <!-- Pupper v3.2.2 -->
@@ -142,6 +146,8 @@
         <geom mesh="Body_V4_Servos"   material="Plastic_Glossy_(Blue)"  class="body_part"/>
         <geom mesh="Body_V4_Glass"    material="Glass_(Grey)"           class="body_part"/>
         <geom mesh="Body_V4_Display"  material="Plastic_Glossy_(Black)" class="body_part"/>
+        <geom type="box" pos="0 -0.059 -0.095" size=".04 .04 .007" quat="0 0 0.3824995 0.9239557" material="Eyes" class="visual"/>
+        <!-- <geom type="box" pos="0 -0.0825 -0.1" size=".04 .04 .001" quat="0 0 0 1 " material="Eyes" class="visual"/> -->
         <geom mesh="Body_V4"          material="ABS_(LightMagenta)"     class="body_part"/>
         <geom mesh="Body_V4_Handle"   material="Silicone_(White)"       class="body_part"/>
       </body>
