@@ -265,13 +265,6 @@ function subarray(array, index, size, num = 1) {
   return array.subarray(start, end);
 }
 
-// subarray helper function (computes start and end and returns subarray)
-function subarray(array, index, size, num = 1) {
-  const start = index * size;
-  const end = start + size * num;
-  return array.subarray(start, end);
-}
-
 function createBufferGeometry(model, meshID) {
   let geometry = new THREE.BufferGeometry();
 
@@ -458,7 +451,14 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
 
       let mesh = new THREE.Mesh();
       if (type == 0) {
-        mesh = new Reflector( new THREE.PlaneGeometry( 100, 100 ), { clipBias: 0.003,texture: texture } );
+        // 0 values should be set to the far clipping plane rather than 100
+        let x = size[0] == 0 ? 100 : size[0] * 2;
+        let y = size[1] == 0 ? 100 : size[1] * 2;
+
+        mesh = new Reflector( new THREE.PlaneGeometry( x, y ), {
+          clipBias: 0.003,
+          texture: texture
+        } );
         mesh.rotateX( - Math.PI / 2 );
       } else {
         mesh = new THREE.Mesh(geometry, material);
