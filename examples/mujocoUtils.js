@@ -258,6 +258,28 @@ export function setupGUI(parentContext) {
 }
 
 
+// Create a global TextDecoder instance
+const textDecoder = new TextDecoder("utf-8");
+
+// Function that decodes a portion of a typed array up to the first null character
+function decodeName(model, index) {
+    const name_arr = model.names.subarray(index);
+    const end = name_arr.indexOf(0);    // Decode to NUL terminator
+    return textDecoder.decode(name_arr.subarray(0, end));
+}
+
+function bodyName(model, bodyId) {
+  return decodeName(model, model.name_bodyadr[bodyId]);
+}
+
+function textureName(model, texId) {
+  return decodeName(model, model.name_texadr[texId]);
+}
+
+function materialName(model, matId) {
+  return decodeName(model, model.name_matadr[matId]);
+}
+
 // subarray helper function (computes start and end and returns subarray)
 function subarray(array, index, size, num = 1) {
   const start = index * size;
@@ -398,8 +420,8 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       let texture = undefined;
       let color = subarray(model.geom_rgba, g, 4);
 
+      const matId = model.geom_matid[g];
       if (model.geom_matid[g] != -1) {
-        let matId = model.geom_matid[g];
         color = subarray(model.mat_rgba, matId, 4);
 
         // Construct Texture from model.tex_rgb
@@ -426,6 +448,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
               texture.repeat.set(...mat_texrepeat);   // TODO: Test cube wrapping
             }
           }
+          texture.name = textureName(model, texId);
           texture.needsUpdate = true;
         }
       }
@@ -435,15 +458,17 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
           material.color.b != color[2] ||
           material.opacity != color[3] ||
           material.map     != texture) {
+        const name = materialName(model, matId);
         material = new THREE.MeshPhysicalMaterial({
+          name: name,
           color: new THREE.Color(color[0], color[1], color[2]),
           transparent: color[3] < 1.0,
-          opacity: color[3] //,
-          // specularIntensity: model.geom_matid[g] != -1 ?       model.mat_specular   [model.geom_matid[g]] *0.5 : undefined,
-          // reflectivity     : model.geom_matid[g] != -1 ?       model.mat_reflectance[model.geom_matid[g]] : undefined,
-          // roughness        : model.geom_matid[g] != -1 ? 1.0 - model.mat_shininess  [model.geom_matid[g]] : undefined,
-          // metalness        : model.geom_matid[g] != -1 ? 0.1 : undefined,
-          // map              : texture
+          opacity: color[3],
+          specularIntensity: model.geom_matid[g] != -1 ?       model.mat_specular   [model.geom_matid[g]] *0.5 : undefined,
+          reflectivity     : model.geom_matid[g] != -1 ?       model.mat_reflectance[model.geom_matid[g]] : undefined,
+          roughness        : model.geom_matid[g] != -1 ? 1.0 - model.mat_shininess  [model.geom_matid[g]] : undefined,
+          metalness        : model.geom_matid[g] != -1 ? 0.1 : undefined,
+          map              : texture
         });
       }
 
@@ -452,10 +477,11 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
         // 0 values should be set to the far clipping plane rather than 100
         let x = size[0] == 0 ? 100 : size[0] * 2;
         let y = size[1] == 0 ? 100 : size[1] * 2;
-
         mesh = new Reflector( new THREE.PlaneGeometry( x, y ), {
+          color: material.color,
           clipBias: 0.003,
-          texture: texture
+          texture: material.map,
+          reflectivity: material.reflectivity
         } );
         mesh.rotateX( - Math.PI / 2 );
       } else {
