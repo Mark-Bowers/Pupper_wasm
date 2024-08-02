@@ -258,6 +258,13 @@ export function setupGUI(parentContext) {
 }
 
 
+// subarray helper function (computes start and end and returns subarray)
+function subarray(array, index, size, num = 1) {
+  const start = index * size;
+  const end = start + size * num;
+  return array.subarray(start, end);
+}
+
 /** Loads a scene for MuJoCo
  * @param {mujoco} mujoco This is a reference to the mujoco namespace object
  * @param {string} filename This is the name of the .xml file in the /working/ directory of the MuJoCo/Emscripten Virtual File System
@@ -311,11 +318,7 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
       // Get the body ID and type of the geom.
       let b = model.geom_bodyid[g];
       let type = model.geom_type[g];
-      let size = [
-        model.geom_size[(g*3) + 0],
-        model.geom_size[(g*3) + 1],
-        model.geom_size[(g*3) + 2]
-      ];
+      const size = subarray(model.geom_size, g, 3);
 
       // Create the body if it doesn't exist.
       if (!(b in bodies)) {
@@ -388,18 +391,11 @@ export async function loadSceneFromURL(mujoco, filename, parent) {
 
       // Set the Material Properties of incoming bodies
       let texture = undefined;
-      let color = [
-        model.geom_rgba[(g * 4) + 0],
-        model.geom_rgba[(g * 4) + 1],
-        model.geom_rgba[(g * 4) + 2],
-        model.geom_rgba[(g * 4) + 3]];
+      let color = subarray(model.geom_rgba, g, 4);
+
       if (model.geom_matid[g] != -1) {
         let matId = model.geom_matid[g];
-        color = [
-          model.mat_rgba[(matId * 4) + 0],
-          model.mat_rgba[(matId * 4) + 1],
-          model.mat_rgba[(matId * 4) + 2],
-          model.mat_rgba[(matId * 4) + 3]];
+        color = subarray(model.mat_rgba, matId, 4);
 
         // Construct Texture from model.tex_rgb
         texture = undefined;
