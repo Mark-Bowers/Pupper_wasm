@@ -691,7 +691,7 @@ export async function downloadExampleScenesFolder(mujoco) {
     "assets/Body_V4_Servos.obj",
     "assets/Body_V4_Strap.obj",
     // "assets/BrushedAluminum.png",
-    "assets/Carpet.png",
+    "assets/carpet.png",
     // "assets/CarbonFiber.png",
     // "assets/CarbonFiber2D.png",
     // "assets/CLS6336HV.png",

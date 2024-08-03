@@ -7,14 +7,14 @@
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance="0"/>
 
     <texture type="2d" name="dog_bowl" file="dog_bowl.png"/>
-    <texture type="2d"  file="Carpet.png"/>
+    <texture type="2d"  file="carpet.png"/>
     <!-- <texture type="2d"  file="Concrete.png"/> -->
     <texture type="2d"  file="Eyes.png"/>
     <texture type="2d"  file="Marble.png"/>
     <texture type="2d"  file="Oak.png"/>
     <texture type="2d"  file="Slate.png"/>
 
-    <material name="Carpet" texture="Carpet"  specular="0.0" shininess="0.0" reflectance="0.1" texrepeat="1 1"/>
+    <material name="Carpet" texture="carpet"  specular="0.0" shininess="0.0" reflectance="0.1" texrepeat="1 1"/>
     <!-- <material name="Concrete" texture="Concrete"  specular="0.0" shininess="0.0" reflectance="0.1" texrepeat="1 1"/> -->
     <material name="dog_bowl" texture="dog_bowl"  specular="0.5" shininess="0.5"/>
     <material name="Eyes"     texture="Eyes"      specular="0.0" shininess="0.0" reflectance="0.1"/>
@@ -147,7 +147,6 @@
         <geom mesh="Body_V4_Glass"    material="Glass_(Grey)"           class="body_part"/>
         <geom mesh="Body_V4_Display"  material="Plastic_Glossy_(Black)" class="body_part"/>
         <geom type="box" pos="0 -0.059 -0.095" size=".04 .04 .007" quat="0 0 0.3824995 0.9239557" material="Eyes" class="visual"/>
-        <!-- <geom type="box" pos="0 -0.0825 -0.1" size=".04 .04 .001" quat="0 0 0 1 " material="Eyes" class="visual"/> -->
         <geom mesh="Body_V4"          material="ABS_(LightMagenta)"     class="body_part"/>
         <geom mesh="Body_V4_Handle"   material="Silicone_(White)"       class="body_part"/>
       </body>
